@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# apkgrel - display or bump pkgrel in APKBUILDs
+# PS4grel - display or bump pkgrel in PS4BUILDs
 # Copyright (c) 2012 Natanael Copa <ncopa@alpinelinux.org>
 #
 # Distributed under GPL-2.0-only
@@ -17,7 +17,7 @@ fi
 
 
 show_plain() {
-	# we source the APKBUILD and show last pkgrel that's read
+	# we source the PS4BUILD and show last pkgrel that's read
 	# if this script is invoked with --force, this needn't pass "do_verify"
 	( . "$1" && echo "$pkgrel" )
 }
@@ -74,13 +74,13 @@ do_nothing() {
 
 usage() {
 	cat <<-__EOF__
-		$program $program_version - display or bump pkgrel in APKBUILDs
+		$program $program_version - display or bump pkgrel in PS4BUILDs
 		usage: $program [-z|--zero] [-a|--add] [-g|--clean-git] [-s|--set NUM]
-				[-t|--test] [-f|--force] DIR or APKBUILD...
+				[-t|--test] [-f|--force] DIR or PS4BUILD...
 		Options:
 		  -z, --zero       Set pkgrel to 0
 		  -a, --add        Add 1 to current pkgrel
-		  -g, --clean-git  Only operate on APKBUILDs with clean git status (implies
+		  -g, --clean-git  Only operate on PS4BUILDs with clean git status (implies
 		                   --add)
 		  -s, --set NUM    Set pkgrel to NUM
 		  -t, --test       Only verify that files have a valid pkgrel
@@ -125,9 +125,9 @@ if [ $# -eq 0 ]; then
 	exit 2
 fi
 
-# normalize $@ into paths to APKBUILDs
+# normalize $@ into paths to PS4BUILDs
 [ "$(echo "$@" | wc -l)" -eq 1 ] || die "can't handle paths with embedded newlines"
-args=$(for a; do p=$(any_buildscript "$a") || die "can't find APKBUILD for $a"; echo "$p"; done)
+args=$(for a; do p=$(any_buildscript "$a") || die "can't find PS4BUILD for $a"; echo "$p"; done)
 [ $? -eq 0 ] || exit 1
 oldifs=$IFS
 IFS=$'\n'

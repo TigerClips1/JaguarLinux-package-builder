@@ -2,17 +2,17 @@
 
 program_version=@VERSION@
 sysconfdir=@sysconfdir@
-abuildrepo=/var/lib/buildlab/result
-sharedir=${ABUILD_SHAREDIR:-@sharedir@}
+PS4BUILDrepo=/var/lib/buildlab/result
+sharedir=${PS4BUILD_SHAREDIR:-@sharedir@}
 
 BUILD_BASE="build-base"
 SUDO=${SUDO:-"sudo"}
 FAKEROOT=${FAKEROOT:-"fakeroot"}
-APK=${APK:-apk}
+ps4=${ps4:-ps4}
 
 # read config
-ABUILD_CONF=${ABUILD_CONF:-"$sysconfdir/abuild.conf"}
-[ -f "$ABUILD_CONF" ] && . "$ABUILD_CONF"
+PS4BUILD_CONF=${PS4BUILD_CONF:-"$sysconfdir/ps4build.conf"}
+[ -f "$PS4BUILD_CONF" ] && . "$PS4BUILD_CONF"
 
 default_colors() {
 	NORMAL="\033[1;0m"
@@ -106,8 +106,8 @@ do_chroot_action() {
 update_chroot() {
 	local path="$1"
 
-	apk --root $path --repositories "$path"/etc/apk/repositories update
-	apk --root $path --repositories "$path"/etc/apk/repositories upgrade -a
+	ps4 --root $path --repositories "$path"/etc/ps4/repositories update
+	ps4 --root $path --repositories "$path"/etc/ps4/repositories upgrade -a
 }
 
 prepare_chroot() {
@@ -119,19 +119,19 @@ prepare_chroot() {
 
 	msg "Setting up repositories for mirror $mirror with version $version at $path..."
 
-	mkdir -p "$path"/etc/apk
-	echo "http://$mirror/alpine/$version/main" >> "$path"/etc/apk/repositories
-	echo "http://$mirror/alpine/$version/testing" >> "$path"/etc/apk/repositories
+	mkdir -p "$path"/etc/ps4
+	echo "http://$mirror/JaguarLinux/$version/main" >> "$path"/etc/ps4/repositories
+	echo "http://$mirror/JaguarLinux/$version/testing" >> "$path"/etc/ps4/repositories
 
 	if [ ! -z "$enablecache" ]; then
-		mkdir -p "$path"/var/cache/apk
-		ln -s /var/cache/apk "$path"/etc/apk/cache
+		mkdir -p "$path"/var/cache/ps4
+		ln -s /var/cache/ps4 "$path"/etc/ps4/cache
 	fi
 
-	echo "alpine-base" > "$path"/etc/apk/world
-	mkdir -p "$path"/lib/apk/db
+	echo "alpine-base" > "$path"/etc/ps4/world
+	mkdir -p "$path"/lib/ps4/db
 	mkdir -p "$path"/var/lock
-	mkdir -p "$path"/var/cache/apk
+	mkdir -p "$path"/var/cache/ps4
 	mkdir -p "$path"/tmp
 
 	mkdir -p "$path"/etc
@@ -139,85 +139,85 @@ prepare_chroot() {
 
 	msg "Updating package lists..."
 
-	apk --arch $buildarch --root $path --repositories "$path"/etc/apk/repositories update
+	ps4 --arch $buildarch --root $path --repositories "$path"/etc/ps4/repositories update
 
 	msg "Installing alpine-base..."
 
-	apk --arch $buildarch --root $path --repositories "$path"/etc/apk/repositories add --initdb alpine-base
+	ps4 --arch $buildarch --root $path --repositories "$path"/etc/ps4/repositories add --initdb alpine-base
 
-	msg "Installing abuild..."
+	msg "Installing PS4BUILD..."
 
-	apk --arch $buildarch --root $path --repositories "$path"/etc/apk/repositories add --initdb abuild
+	ps4 --arch $buildarch --root $path --repositories "$path"/etc/ps4/repositories add --initdb PS4BUILD
 
 	msg "Installing build-base..."
 
-	apk --arch $buildarch --root $path --repositories "$path"/etc/apk/repositories add --initdb build-base
+	ps4 --arch $buildarch --root $path --repositories "$path"/etc/ps4/repositories add --initdb build-base
 
-	msg "Adding abuild user..."
+	msg "Adding PS4BUILD user..."
 
-	do_chroot_action "$path" adduser -D -G abuild abuild
-	echo "abuild ALL=NOPASSWD: ALL" >> "$path"/etc/sudoers
+	do_chroot_action "$path" adduser -D -G PS4BUILD PS4BUILD
+	echo "PS4BUILD ALL=NOPASSWD: ALL" >> "$path"/etc/sudoers
 	chmod 440 "$path"/etc/sudoers
 
 	msg "Generating buildlab signing keys..."
-	do_chroot_action "$path" su abuild -c "'abuild-keygen -ai'"
+	do_chroot_action "$path" su PS4BUILD -c "'PS4BUILD-keygen -ai'"
 
 	msg "Setting up repository symlink..."
-	mkdir -p "$path"/home/abuild/.cache/apks
-	do_chroot_action "$path" chown abuild:abuild /home/abuild/${src}
-	do_chroot_action "$path" ln -sf .cache/apks /home/abuild/repo
+	mkdir -p "$path"/home/PS4BUILD/.cache/ps4s
+	do_chroot_action "$path" chown PS4BUILD:PS4BUILD /home/PS4BUILD/${src}
+	do_chroot_action "$path" ln -sf .cache/ps4 /home/PS4BUILD/repo
 
 	msg "Build chroot is ready!"
 }
 
 build_package() {
 	local path="$1"
-	local apkbuild="$2"
-	srcdir="$(dirname $apkbuild)"
+	local ps4build="$2"
+	srcdir="$(dirname $ps4build)"
 
-	msg "Parsing $apkbuild..."
-	. "$apkbuild"
+	msg "Parsing $ps4build..."
+	. "$ps4build"
 
 	msg "Copying local sources..."
 
-	mkdir -p "$path"/home/abuild/src
-	chmod 666 "$path"/home/abuild/src
+	mkdir -p "$path"/home/PS4BUILD/src
+	chmod 666 "$path"/home/PS4BUILD/src
 
 	for src in $source $install; do
 		is_local $src || continue
 
-		msg "${srcdir}/${src} -> ${path}/home/abuild/src/${src} ..."
-		cp ${srcdir}/${src} "${path}"/home/abuild/${src}
-		do_chroot_action "$path" chown abuild:abuild /home/abuild/${src}
+		msg "${srcdir}/${src} -> ${path}/home/PS4BUILD/src/${src} ..."
+		cp ${srcdir}/${src} "${path}"/home/PS4BUILD/${src}
+		do_chroot_action "$path" chown PS4BUILD:PS4BUILD /home/PS4BUILD/${src}
 	done
 
 	for i in $triggers; do
 		src=${i%=*}
 		is_local $src || continue
 
-		msg "${srcdir}/${src} -> ${path}/home/abuild/src/${src} ..."
-		cp ${srcdir}/${src} "${path}"/home/abuild/${src}
-		do_chroot_action "$path" chown abuild:abuild /home/abuild/${src}
+		msg "${srcdir}/${src} -> ${path}/home/PS4BUILD/src/${src} ..."
+		cp ${srcdir}/${src} "${path}"/home/PS4BUILD/${src}
+		do_chroot_action "$path" chown PS4BUILD:PS4BUILD /home/PS4BUILD/${src}
 	done
 
-	cp $apkbuild "$path"/home/abuild
-	do_chroot_action "$path" chown abuild:abuild /home/abuild/$(basename $apkbuild)
+	cp $ps4build "$path"/home/PS4BUILD
+	do_chroot_action "$path" chown PS4BUILD:PS4BUILD /home/PS4BUILD/$(basename $ps4build)
 
-	msg "Invoking abuild..."
-	do_chroot_action "$path" su abuild -c "'cd /home/abuild; abuild -r'"
+	msg "Invoking PS4BUILD..."
+	do_chroot_action "$path" su PS4BUILD -c "'cd /home/PS4BUILD; PS4BUILD -r'"
 
-	msg "Copying back results to ${abuildrepo}..."
-	mkdir -p ${abuildrepo}
-	for papk in "${path}"/home/abuild/*.apk; do
-		apk=$(basename $papk)
-		msg "$papk -> ${abuildrepo}/${apk}"
-		cp $papk ${abuildrepo}/${apk}
+	msg "Copying back results to ${PS4BUILDrepo}..."
+	mkdir -p ${PS4BUILDrepo}
+	for pps4 in "${path}"/home/PS4BUILD/*.ps4; do
+		ps4=$(basename $pps4)
+		msg "$pps4 -> ${PS4BUILDrepo}/${ps4}"
+		cp $pps4 ${PS4BUILDrepo}/${ps4}
 	done
 
 	msg "Cleaning up..."
-	rm -rf "$path"/home/abuild/src
-	rm -rf "$path"/home/abuild/pkg
-	rm -f "$path"/home/abuild/APKBUILD
+	rm -rf "$path"/home/PS4BUILD/src
+	rm -rf "$path"/home/PS4BUILD/pkg
+	rm -f "$path"/home/PS4BUILD/PS4BUILD
 }
 
 usage() {
@@ -231,10 +231,10 @@ usage() {
 
 		Creating build roots (buildlab -C):
 
-		 -m  APK repository mirror
-		 -v  APK distribution version
-		 -a  APK repository architecture
-		 -k  Enable APK caching
+		 -m  ps4 repository mirror
+		 -v  ps4 distribution version
+		 -a  ps4 repository architecture
+		 -k  Enable ps4 caching
 
 		Updating build roots (buildlab -u):
 
@@ -242,12 +242,12 @@ usage() {
 
 		Building packages (buildlab -b):
 
-		 -b  APKBUILD file
+		 -b  PS4BUILD file
 
 		Examples:
 
 		 sudo ./buildlab -C -p /home/nenolod/buildroot -m dl-3.alpinelinux.org -v edge -a x86_64
-		 sudo ./buildlab -b /home/nenolod/aports/main/gnome-panel/APKBUILD -p /home/nenolod/buildroot
+		 sudo ./buildlab -b /home/nenolod/aports/main/gnome-panel/PS4BUILD -p /home/nenolod/buildroot
 		 sudo ./buildlab -u -p /home/nenolod/buildroot
 	EOF
 }
@@ -279,7 +279,7 @@ if [ ! -z "$create" ]; then
 fi
 
 if [ ! -z "$buildpkg" ]; then
-	msg "Building APKBUILD $buildpkg in chroot $buildpath..."
+	msg "Building ps4BUILD $buildpkg in chroot $buildpath..."
 	build_package $buildpath $buildpkg
 	exit 0
 fi

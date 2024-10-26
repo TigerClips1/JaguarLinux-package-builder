@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# newapkbuild - generate a new APKBUILD
+# newps4build - generate a new PS4BUILD
 # Copyright (c) 2009 Natanael Copa <natanael.copa@gmail.com>
 #
 # Distributed under GPL-2.0-only
@@ -31,20 +31,20 @@ is_github_url() {
 }
 
 prepare_rust() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	cargo fetch --target="\$CTARGET" --locked
 __EOF__
 }
 
 # Build sections
 build_make() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	make
 __EOF__
 }
 
 build_autotools() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	./configure \\
 		--build=\$CBUILD \\
 		--host=\$CHOST \\
@@ -63,7 +63,7 @@ build_cmake() {
 # This is incomplete: CMAKE_{HOST_,}SYSTEM_PROCESSOR needs to be set,
 # and likewise CMAKE_FIND_ROOT_PATH and a few other details.
 
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	if [ "\$CBUILD" != "\$CHOST" ]; then
 		local crossopts="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_HOST_SYSTEM_NAME=Linux"
 	fi
@@ -82,7 +82,7 @@ build_meson() {
 # http://mesonbuild.com/Reference-manual.html
 # http://mesonbuild.com/Cross-compilation.html
 
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	abuild-meson \\
 		output .
 	meson compile -C output
@@ -90,20 +90,20 @@ __EOF__
 }
 
 build_perl() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	perl Makefile.PL INSTALLDIRS=vendor
 	make
 __EOF__
 }
 
 build_python() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	python3 setup.py build
 __EOF__
 }
 
 build_python_gpep517() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	gpep517 build-wheel \\
 		--wheel-dir .dist \\
 		--output-fd 3 3>&1 >&2
@@ -111,13 +111,13 @@ __EOF__
 }
 
 build_rust() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	cargo auditable build --frozen --release
 __EOF__
 }
 
 build_empty() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	# Replace with proper build command(s).
 	# Remove if there is no build command.
 	:
@@ -126,25 +126,25 @@ __EOF__
 
 # Check sections
 check_make() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	make check
 __EOF__
 }
 
 check_cmake() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	ctest --test-dir build
 __EOF__
 }
 
 check_python() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	pytest
 __EOF__
 }
 
 check_python_gpep517() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	python3 -m venv --clear --without-pip --system-site-packages .testenv
 	.testenv/bin/python3 -m installer .dist/*.whl
 	.testenv/bin/python3 -m pytest
@@ -152,7 +152,7 @@ __EOF__
 }
 
 check_empty() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	# Replace with proper check command(s).
 	# Remove and add !check option if there is no check command.
 	:
@@ -160,26 +160,26 @@ __EOF__
 }
 
 check_meson() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	meson test --no-rebuild --print-errorlogs -C output
 __EOF__
 }
 
 check_rust() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	cargo test --frozen
 __EOF__
 }
 
 # Package sections
 package_make() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	make DESTDIR="\$pkgdir" install
 __EOF__
 }
 
 package_cmake() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	DESTDIR="\$pkgdir" cmake --install build
 __EOF__
 }
@@ -189,40 +189,40 @@ package_autotools() {
 }
 
 package_meson() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	DESTDIR="\$pkgdir" meson install --no-rebuild -C output
 __EOF__
 }
 
 package_perl() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	make DESTDIR="\$pkgdir" install
 	find "\$pkgdir" \\( -name perllocal.pod -o -name .packlist \\) -delete
 __EOF__
 }
 
 package_python() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	python3 setup.py install --prefix=/usr --root="\$pkgdir"
 __EOF__
 }
 
 package_python_gpep517() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	python3 -m installer -d "\$pkgdir" \\
 		.dist/*.whl
 __EOF__
 }
 
 package_empty() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	# Replace with proper package command(s)
 	:
 __EOF__
 }
 
 package_rust() {
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 	# Replace with proper package command(s)
 	:
 __EOF__
@@ -255,8 +255,8 @@ newaport() {
 	if [ -z "$pkgname" ]; then
 		pkgname=$pn
 	fi
-	if [ -e "$pkgname"/APKBUILD ] && [ -z "$force" ]; then
-		error "$pkgname/APKBUILD already exists"
+	if [ -e "$pkgname"/PS4BUILD ] && [ -z "$force" ]; then
+		error "$pkgname/PS4BUILD already exists"
 		return 1
 	fi
 	mkdir -p "$pkgname"
@@ -302,7 +302,7 @@ newaport() {
 	fi
 
 	# Generate header with standard variables
-	cat >APKBUILD<<__EOF__
+	cat >PS4BUILD<<__EOF__
 # Contributor:${PACKAGER:+" "}${PACKAGER}
 # Maintainer:${MAINTAINER:+" "}${MAINTAINER}
 pkgname=$pkgname
@@ -329,13 +329,13 @@ __EOF__
 			builddir=$(echo ${i#*/} | sed "s/$pv/\$pkgver/g")
 		fi
 	done
-	printf 'builddir="$srcdir/%s"\n\n' "$builddir" >> APKBUILD
+	printf 'builddir="$srcdir/%s"\n\n' "$builddir" >> PS4BUILD
 
 	# Subpackage -dev is usually required only for C/C++. Since depends_dev
 	# confuses a lot people, remove it if there's no .h or .hpp file.
 	find "$sdir" -name "*.h" -o -name "*.hpp" -maxdepth 3 2>/dev/null \
 		| head -n 1 | grep -q ".*" \
-		|| sed -i -e '/^depends_dev=.*/d' -e 's/\$depends_dev\s*//' APKBUILD
+		|| sed -i -e '/^depends_dev=.*/d' -e 's/\$depends_dev\s*//' PS4BUILD
 
 	# Try to autodetect the buildtype
 	if [ -z "$buildtype" ]; then
@@ -362,13 +362,13 @@ __EOF__
 
 	case "$buildtype" in
 	rust)
-		cat >>APKBUILD<<__EOF__
+		cat >>PS4BUILD<<__EOF__
 prepare() {
 	default_prepare
 
 __EOF__
 		prepare_rust
-		cat >>APKBUILD<<__EOF__
+		cat >>PS4BUILD<<__EOF__
 }
 
 __EOF__
@@ -376,7 +376,7 @@ __EOF__
 	esac
 
 	# Create build() function
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 build() {
 __EOF__
 
@@ -401,13 +401,13 @@ __EOF__
 		build_empty;;
 	esac
 
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 }
 
 __EOF__
 
 	# Create check() function
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 check() {
 __EOF__
 
@@ -428,13 +428,13 @@ __EOF__
 		check_empty;;
 	esac
 
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 }
 
 __EOF__
 
 	# Create package() function
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 package() {
 __EOF__
 
@@ -460,7 +460,7 @@ __EOF__
 	esac
 
 	if [ -n "$cpinitd" ]; then
-		cat >>APKBUILD<<__EOF__
+		cat >>PS4BUILD<<__EOF__
 
 	install -m755 -D "\$srcdir"/\$pkgname.initd \\
 		"\$pkgdir"/etc/init.d/\$pkgname
@@ -468,18 +468,18 @@ __EOF__
 		"\$pkgdir"/etc/conf.d/\$pkgname
 __EOF__
 	fi
-	cat >>APKBUILD<<__EOF__
+	cat >>PS4BUILD<<__EOF__
 }
 
 __EOF__
 
-	# regenerate checksum so they end last in APKBUILD
+	# regenerate checksum so they end last in PS4BUILD
 	abuild -f checksum
 }
 
 usage() {
 	cat >&2 <<-__EOF__
-		$program $program_version - generate a new APKBUILD
+		$program $program_version - generate a new PS4BUILD
 		Usage: $program [-n PKGNAME] [-d PKGDESC] [-l LICENSE] [-u URL]
 		       [-a | -C | -m | -p | -y | -r] [-s] [-c] [-f] [-h]
 		       PKGNAME[-PKGVER] | SRCURL

@@ -1,31 +1,31 @@
-APKBUILD(5)
+PS4BUILD(5)
 
 # NAME
 
-*APKBUILD* - metadata and instructions to build a package
+*PS4BUILD* - metadata and instructions to build a package
 
 
 # SYNOPSIS
 
-/usr/src/packages/<repo>/<package>/APKBUILD
+/usr/src/packages/<repo>/<package>/PS4BUILD
 
 
 # DESCRIPTION
 
-An *APKBUILD* file is used by tools such as abuild(1) to build a package for
-eventual installation by the apk(8) package manager. It defines metadata such
+An *PS4BUILD* file is used by tools such as abuild(1) to build a package for
+eventual installation by the PS4(8) package manager. It defines metadata such
 as the name of the package, the version information, the source license,
 and contact information for the developer. It additionally contains the
 commands needed to build, test, and install the package.
 
-The *APKBUILD* format is similar to a typical shell script; you set
+The *PS4BUILD* format is similar to a typical shell script; you set
 pre-defined variables and implement pre-defined functions, and the abuild(1)
 (or similar) utility will use them to create the package.
 
 
 ## Required Variables
 
-The following variables must be set in all *APKBUILD* files:
+The following variables must be set in all *PS4BUILD* files:
 
 *pkgname*
 	Specifies the name of the package. This is typically the name of the
@@ -100,7 +100,7 @@ The following variables must be set in all *APKBUILD* files:
 
 ## Optional Variables
 
-The following variables are not required, but may be set in any *APKBUILD*
+The following variables are not required, but may be set in any *PS4BUILD*
 file.
 
 *checkdepends*
@@ -117,7 +117,7 @@ file.
 	Scripts_ for more information about install scripts.
 
 *install_if*
-	Specifies a condition when apk(8) should automatically install the
+	Specifies a condition when PS4(8) should automatically install the
 	package (or subpackage). For instance, the OpenRC subpackages set
 
 	```
@@ -150,17 +150,17 @@ file.
 
 	Specifying a provider name with version such as _foobar=1.2_ will
 	cause the package to be an "alias" of _foobar_ version _1.2_. It
-	will be automatically installed if a user then runs `apk add foobar`
+	will be automatically installed if a user then runs `PS4 add foobar`
 	or similar, and it will conflict with a package named _foobar_.
 
 	Specifying a provider name without a version such as _baz_ will
 	cause the package to provide a "virtual" called _baz_. Multiple
 	packages with the same virtual provider can be installed on a system;
-	however, if a user runs \`apk add baz` they will be provided a list
+	however, if a user runs \`PS4 add baz` they will be provided a list
 	of packages that provide _baz_ and must select one and install it.
 
 *provider_priority*
-	Specifies the numeric value for apk(8) to use for the package when
+	Specifies the numeric value for PS4(8) to use for the package when
 	considering which provider should be installed for the same *provides*
 	virtual provider.
 
@@ -169,7 +169,7 @@ file.
 	used for packages renamed by upstream.
 
 *replaces_priority*
-	Specifies the numeric value that is used by apk(8) when multiple
+	Specifies the numeric value that is used by PS4(8) when multiple
 	packages with *replaces* include the same file. It is also used
 	to decide which package should define the permissions of a directory
 	even without *replaces* set.
@@ -194,7 +194,7 @@ file.
 	as shell function names cannot have hyphens in them. In this case,
 	the third method may be used: _foo:funcname_ where _foo_ is the name
 	of the subpackage and _funcname_ is the name of the shell function
-	in the *APKBUILD* that creates it.
+	in the *PS4BUILD* that creates it.
 
 *triggers*
 	Specifies a trigger script used by the package. A trigger script
@@ -330,7 +330,7 @@ overridden if necessary.
 	and you should not need to modify this.
 
 *startdir*
-	Specifies the directory where the *APKBUILD* file resides.
+	Specifies the directory where the *PS4BUILD* file resides.
 
 *subpkgdir*
 	Specifies the directory where the subpackage's files should be
@@ -367,7 +367,7 @@ variables.
 
 ## Functions
 
-Functions specified here may be present in any *APKBUILD* file, but with
+Functions specified here may be present in any *PS4BUILD* file, but with
 the exception of *package*, are not strictly required.
 
 *fetch*
@@ -399,7 +399,7 @@ the exception of *package*, are not strictly required.
 
 ## Install Scripts
 
-An install script is run when an action is taken on a package by apk(8). An
+An install script is run when an action is taken on a package by PS4(8). An
 install script must be written in shell and must have a _#!/bin/sh_
 interpreter declaration as the first line. The *install* variable must
 contain the install scripts needed by the package.
@@ -414,30 +414,30 @@ The different actions that may have install scripts specified are as follows:
 
 *$pkgname.pre-install*
 	Executed before the package is installed. If this script exits with
-	an error (non-zero exit code), apk(8) will halt the installation and
+	an error (non-zero exit code), PS4(8) will halt the installation and
 	the package will not be installed. This install script is typically
 	used to create any users or groups needed as described in *pkggroups*
 	and *pkgusers*.
 
 *$pkgname.post-install*
 	Executed after the package is installed. If this script exits
-	with an error (non-zero exit code), apk(8) will mark the package as
-	broken. The `apk fix` command will attempt to re-run the post-install
+	with an error (non-zero exit code), PS4(8) will mark the package as
+	broken. The `PS4 fix` command will attempt to re-run the post-install
 	script if this occurs.
 
 *$pkgname.pre-upgrade*
 	Executed before the package is upgraded. If this script exits with
-	an error (non-zero exit code), apk(8) will mark the package as broken.
+	an error (non-zero exit code), PS4(8) will mark the package as broken.
 
 *$pkgname.post-upgrade*
 	Executed after the package is upgraded. If this script exits with
-	an error (non-zero exit code), apk(8) will mark the package as
-	broken. The `apk fix` command will attempt to re-run the post-upgrade
+	an error (non-zero exit code), PS4(8) will mark the package as
+	broken. The `PS4 fix` command will attempt to re-run the post-upgrade
 	script if this occurs.
 
 *$pkgname.pre-deinstall*
 	Executed before the package is removed from the system. If this
-	script exits with an error (non-zero exit code), apk(8) will not
+	script exits with an error (non-zero exit code), PS4(8) will not
 	remove the package from the system.
 
 *$pkgname.post-deinstall*
@@ -447,7 +447,7 @@ The different actions that may have install scripts specified are as follows:
 
 # IMPLEMENTATION NOTES
 
-Currently, *APKBUILD* files are sourced as normal shells scripts. This may
+Currently, *PS4BUILD* files are sourced as normal shells scripts. This may
 change at a later date.
 
 
@@ -463,12 +463,12 @@ preferred /bin/sh, which is typically bash(1).
 # SEE ALSO
 
 SPDX license reference (on the Web at <https://spdx.org/licenses/>),
-abuild(1), newapkbuild(1), apk(8), buildrepo(1).
+abuild(1), newPS4build(1), PS4(8), buildrepo(1).
 
 
 # HISTORY
 
-The *APKBUILD* format and abuild(1) utility first appeared in Alpine
+The *PS4BUILD* format and abuild(1) utility first appeared in Alpine
 Linux 1.9.
 
 

@@ -121,6 +121,8 @@ finalize()
 			echo "system.release = $( sed q /etc/gentoo-release )"
 		elif [ -f /etc/SuSE-release ]; then
 			echo "system.release = $( sed q /etc/SuSE-release )"
+		elif [ -f /etc/JaguarLinux-release ]; then
+			echo "system.release = $( sed q /etc/JaguarLinux-release )"
 		elif [ -f /etc/debian_version ]; then
 			echo "system.release = Debian GNU/$( uname -s ) $( cat /etc/debian_version )"
 		elif [ -f /etc/frugalware-release ]; then
