@@ -1,0 +1,1367 @@
+#!/usr/bin/env atf-sh
+
+. $(atf_get_srcdir)/test_env.sh
+init_tests \
+	pbuild_help \
+	pbuild_invalid_opt \
+	pbuild_version \
+	pbuild_simple_pkg_without_deps \
+	pbuild_build_fail \
+	pbuild_invalid_filename \
+	pbuild_usr_lib64 \
+	pbuild_dbg_subpackage \
+	pbuild_reproducible \
+	pbuild_checksum_generation \
+	pbuild_checksum_duplicates \
+	pbuild_subpkg_dep_leak \
+	pbuild_subpkg_libs \
+	pbuild_py_providers_creation \
+	pbuild_py_dependency_scan \
+	pbuild_py_dependency_scan_conflict \
+	pbuild_reject_init_with_improper_shebang \
+	pbuild_valid_pkgnames \
+	pbuild_invalid_pkgnames \
+	pbuild_invalid_subpkgnames \
+	pbuild_invalid_subpkg_version \
+	pbuild_provide_pkgname \
+	pbuild_validate_depends \
+	pbuild_subpackage_arch \
+	pbuild_large_doc_subpackage \
+	pbuild_bigdocs \
+	pbuild_pkgver_digit_letter_digit \
+	pbuild_multiline_license \
+	pbuild_license_spdx \
+	pbuild_git_ceiling \
+	pbuild_package_size \
+	pbuild_keepdirs \
+	pbuild_amove \
+	pbuild_doc \
+	pbuild_dev \
+	pbuild_devhelp_warn \
+	pbuild_devhelp \
+	pbuild_check_maintainer \
+	pbuild_cleanoldpkg \
+	pbuild_path_with_spaces \
+	pbuild_pyc_warn \
+	pbuild_pyc \
+	pbuild_setcap_binary \
+	pbuild_setcap_binary_with_option \
+	pbuild_command_provides \
+	pbuild_gocache_dir \
+	pbuild_cargo_home_dir \
+	pbuild_fish_comp_split \
+	pbuild_deps \
+	pbuild_usr_merge
+
+export PBUILD_SHAREDIR=$(atf_get_srcdir)/..
+export PBUILD_CONF=/dev/null
+export PBUILD_PS4_INDEX_OPTS="--allow-untrusted"
+export GIT_CONFIG_GLOBAL="$(atf_get_srcdir)/testdata/gitconfig"
+export REPODEST="$PWD"/packages
+
+testrepo=$(atf_get_srcdir)/testrepo
+
+# copy keys
+init_keys() {
+	cp -ra "$(atf_get_srcdir)"/testdata/.pbuild "$PWD"
+}
+
+pbuild_help_body() {
+	atf_check -s exit:0 \
+		-o match:"usage:" \
+		pbuild -h
+}
+
+pbuild_invalid_opt_body() {
+	atf_check -s exit:1 \
+		-e match:"usage:" \
+		pbuild -@
+}
+
+pbuild_version_body() {
+	atf_check -s exit:0 \
+		-o match:"pbuild [0-9]+\.[0-9]+" \
+		pbuild -V
+}
+
+pbuild_simple_pkg_without_deps_body() {
+	init_keys
+	cp -r "$testrepo"/pkg1 .
+	cd pkg1
+	atf_check -s exit:0 -o ignore \
+		-e not-match:"WARNING" \
+		-e not-match:"fatal" \
+		pbuild
+}
+
+pbuild_build_fail_body() {
+	init_keys
+	mkdir buildfail
+	cat >buildfail/PS4BUILD <<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="buildfail"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package that fails to build"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		subpackages="\$pkgname-dev \$pkgname-doc"
+		source=""
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+		build() {
+			false
+		}
+		package() {
+			true
+		}
+	EOF
+	cd buildfail
+	atf_check -s exit:1 \
+		-e match:"ERROR: buildfail: build failed" \
+		pbuild
+}
+
+pbuild_invalid_filename_body() {
+	init_keys
+	mkdir invalid-filename
+	cd invalid-filename
+	cat >PS4BUILD <<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="invalid-filename"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package that fails to build"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+		build() {
+			touch $'bad\nfile'
+		}
+		check() {
+			true
+		}
+		package() {
+			mkdir -p "\$pkgdir"
+			cp -r * "\$pkgdir"/
+		}
+	EOF
+	atf_check -s exit:1 \
+		-e match:"ERROR:.*: Found filenames with newline" \
+		pbuild
+}
+
+pbuild_usr_lib64_body() {
+	init_keys
+	mkdir lib64test
+	cd lib64test
+	cat >PS4BUILD <<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="lib64test"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		source=""
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+		build() {
+			mkdir -p usr/lib64
+		}
+		check() {
+			true
+		}
+
+		package() {
+			mkdir -p "\$pkgdir"
+			cp -r * "\$pkgdir"/
+		}
+	EOF
+	atf_check -s exit:1 \
+		-e match:"ERROR:.*: Packages must not put anything under /usr/lib64" \
+		pbuild
+
+	options=lib64 atf_check -s exit:0 \
+		-e match:"Build complete" \
+		pbuild
+}
+
+pbuild_dbg_subpackage_body() {
+	init_keys
+	cp -ra "$testrepo" .
+	cd testrepo/dbgpkg
+	atf_check -s exit:0 \
+		-o match:"hello world" \
+		-e match:"Build complete" \
+		pbuild
+	cd ../..
+
+	arch=$(pbuild -A)
+	tar -zxf "$REPODEST"/testrepo/$arch/dbgpkg-1.0-r0.ps4 \
+		|| atf_fail "failed to extract dbgpkg-1.0-r0.ps4"
+	if [ -e usr/lib/debug ]; then
+		atf_fail "usr/lib/debug should not exist"
+	fi
+	debuginfo=$(readelf -wk usr/bin/hello | grep '^  Separate debug info file: [^/]*\.debug$')
+	debuginfo_file=${debuginfo#"  Separate debug info file: "}
+	atf_check -s exit:0 \
+		-e match:"nm: usr/bin/hello: no symbols" \
+		nm usr/bin/hello
+
+	if ! [ usr/bin/hello -ef usr/bin/hello-hard ]; then
+		atf_fail 'hello is not a hardlink of hello-hard'
+	fi
+
+	rm -r usr
+	tar -xf "$REPODEST"/testrepo/$arch/dbgpkg-dbg-1.0-r0.ps4
+	if [ -e usr/bin ]; then
+		atf_fail "usr/bin should not exist"
+	fi
+
+	find usr
+	atf_check -s exit:0 \
+		-o match:"T main" \
+		nm usr/lib/debug/usr/bin/$debuginfo_file
+
+	if [ -e usr/lib/debug/usr/bin/hello-sym.debug ]; then
+		atf_fail "usr/lib/debug/usr/bin/hello-sym.debug should not exist"
+	fi
+
+	if [ -e usr/lib/debug/usr/bin/hello.debug ] && [ -e usr/lib/debug/usr/bin/hello-hard.debug ]; then
+		atf_fail "only one of hello.debug and hello-hard.debug should exist"
+	fi
+}
+
+pbuild_reproducible_body() {
+	init_keys
+	cp -ra "$testrepo" .
+	cd testrepo/pkg1
+
+	# set timestamp of ps4BUILD to 1 min older than current time
+	touch -d @$(( $(date -u +%s) - 60)) ps4BUILD
+
+	arch=$(pbuild -A)
+	pkgs=$(pbuild listpkg)
+
+	pbuild || atf_fail "first build failed"
+	checksums=$(cd "$REPODEST"/testrepo/$arch && sha512sum $pkgs)
+	echo "$checksums"
+
+	rm -r "$REPODEST"/testrepo
+	pbuild || atf_fail "rebuild failed"
+	checksums2=$(cd "$REPODEST"/testrepo/$arch && sha512sum $pkgs)
+	echo "$checksums2"
+
+	if [ "$checksums" != "$checksums2" ]; then
+		atf_fail "checksums does not match"
+	fi
+}
+
+pbuild_checksum_generation_body() {
+	mkdir foo
+	cat > foo/PS4BUILD <<-EOF
+		pkgname="foo"
+		pkgver="1.0"
+		source="test.txt"
+	EOF
+	echo "foo" > foo/test.txt
+	cd foo
+	pbuild checksum || atf_fail "checksum generation failed"
+	( . ./PS4BUILD && echo "$sha512sums" | sed '/^$/d' > sums )
+	cat sums
+	sha512sum -c sums || atf_fail "checksum mismatch"
+}
+
+pbuild_checksum_duplicates_body() {
+	mkdir -p foo/dir1 foo/dir2
+	cat > foo/PS4BUILD <<-EOF
+		pkgname="foo"
+		pkgver="1.0"
+		source="dir1/testfile dir2/testfile"
+	EOF
+	echo "first" > foo/dir1/testfile
+	echo "second" > foo/dir2/testfile
+	cd foo
+	atf_check -s exit:1 \
+		-e match:"ERROR:.*duplicate found" \
+		pbuild checksum
+}
+
+pbuild_subpkg_dep_leak_body() {
+	mkdir -p testrepo/subpkg-dep-leak
+	cd testrepo/subpkg-dep-leak
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Natanael Copa <ncopa@alpinelinux.org>
+		pkgname="subpkg-dep-leak"
+		pkgver=1.0
+		pkgrel=0
+		pkgdesc="Dummy test package with subpackages and dependencies"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		depends="tar scanelf"
+		license="MIT"
+		subpackages="\$pkgname-subpkg"
+		options="!check"
+
+		package() {
+			mkdir -p "\$pkgdir"
+		}
+
+		subpkg() {
+			depends="sed"
+			mkdir -p "\$subpkgdir"
+		}
+	EOF
+	pbuild clean unpack prepare build rootpkg
+
+	grep 'depend = tar' pkg/.control.subpkg-dep-leak/.PS4INFO \
+		|| atf_fail "subpkg-dep-leak should depend on tar"
+	grep 'depend = scanelf' pkg/.control.subpkg-dep-leak/.PS4INFO \
+		|| atf_fail "subpkg-dep-leak should depend on scanelf"
+	! grep 'depend = sed' pkg/.control.subpkg-dep-leak/.PS4INFO \
+		|| atf_fail "subpkg-dep-leak should not depends on sed"
+
+	grep 'depend = sed' pkg/.control.subpkg-dep-leak-subpkg/.PS4INFO \
+		|| atf_fail "subpkg-dep-leak-subpkg should depend on sed"
+
+	! grep 'depend = tar' pkg/.control.subpkg-dep-leak-subpkg/.PS4INFO \
+		|| atf_fail "subpkg-dep-leak-subpkg should not depend on tar"
+}
+
+pbuild_subpkg_libs_body() {
+	init_keys
+	mkdir -p testrepo/pkg
+	cd testrepo/pkg
+	cat > PS4BUILD <<-EOF
+		maintainer="Natanael Copa <ncopa@alpinelinux.org>"
+		pkgname="pkg"
+		pkgver=1.0
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		subpackages="\$pkgname-libs"
+		options="!check"
+
+		package() {
+			mkdir -p "\$pkgdir"/usr/lib
+			touch "\$pkgdir"/usr/lib/libfoo.so.1
+		}
+	EOF
+	pbuild clean unpack prepare build rootpkg || atf_fail "pbuild failed"
+	if ! [ -e pkg/pkg-libs/usr/lib/libfoo.so.1 ]; then
+		find pkg
+		atf_fail "libfoo.so.1 was not moved"
+	fi
+}
+
+
+pbuild_py_providers_creation_body() {
+	init_keys
+	cp -ra "$testrepo" .
+	cd testrepo/py3\ foo\ and\ bar
+	pbuild rootpkg || atf_fail "pbuild failed"
+	atf_check -s exit:0 \
+		-o match:"provides = py3.9:foo=1.0.0-r0" \
+		cat pkg/.control.py3-foo-and-bar/.PS4INFO
+}
+
+pbuild_py_dependency_scan_body() {
+	init_keys
+	cp -ra "$testrepo" .
+	cd testrepo/py3\ foo\ and\ bar
+	pbuild rootpkg || atf_fail "pbuild failed"
+	atf_check -s exit:0 \
+		-o match:"depend = python3~3.9" \
+		cat pkg/.control.py3-foo-and-bar/.PS4INFO
+}
+
+pbuild_py_dependency_scan_conflict_body() {
+	init_keys
+	cp -ra "$testrepo" .
+	cd testrepo/py3-conflicting-python-versions
+	atf_check -s exit:1 \
+		-e match:"ERROR.*package contains python3 modules for conflicting python3 versions" \
+		pbuild rootpkg
+}
+
+pbuild_reject_init_with_improper_shebang_body() {
+	mkdir invalid-initd
+	cd invalid-initd
+	cat >PS4BUILD<<-EOF
+		# Maintainer: Natanael Copa <ncopa@alpinelinux.org>
+		pkgname="invalid-initd"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		subpackages=""
+		source="test.initd"
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+	EOF
+	cat >test.initd<<-EOF
+	 	#!/bin/sh
+		command="test"
+	EOF
+	pbuild checksum
+
+	atf_check -s exit:1 \
+		-o match:"OK" \
+		-e match:"ERROR.*is not an openrc" \
+		pbuild unpack
+}
+
+pbuild_valid_pkgnames_body() {
+	cp -ra "$testrepo"/test-pkgname .
+	cd test-pkgname
+	atf_check -s exit:0 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTNAME=foo atf_check -s exit:0 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTSUBNAME=foo atf_check -s exit:0 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTNAME="more_+-2.0-complicated" atf_check -s exit:0 \
+		-e match:"Validating" \
+		pbuild validate
+}
+
+pbuild_invalid_pkgnames_body() {
+	init_keys
+	cp -ra "$testrepo"/test-pkgname .
+	cd test-pkgname
+	TESTNAME="" atf_check -s exit:1 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTNAME="-foo" atf_check -s exit:1 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTNAME="foo with spaces" atf_check -s exit:1 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTNAME="width@at" atf_check -s exit:1 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTNAME="width=equal" atf_check -s exit:1 \
+		-e match:"Validating" \
+		pbuild validate
+}
+
+pbuild_invalid_subpkgnames_body() {
+	init_keys
+	cp -ra "$testrepo"/test-pkgname .
+	cd test-pkgname
+	TESTSUBNAME="" atf_check -s exit:1 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTSUBNAME="-foo" atf_check -s exit:1 \
+		-e match:"Validating" \
+		pbuild validate
+}
+
+pbuild_invalid_subpkg_version_body() {
+	init_keys
+	cp -ra "$testrepo"/test-pkgname .
+	cd test-pkgname
+	TESTDEPVER="1.0-0" atf_check -s exit:1 \
+		-e match:"Invalid version" \
+		pbuild all
+}
+
+pbuild_provide_pkgname_body() {
+	init_keys
+	cp -ra "$testrepo"/test-pkgname .
+	cd test-pkgname
+	TESTNAME=provided atf_check -s exit:1 \
+		-e match:"provides must not contain" \
+		pbuild validate
+	TESTNAME=test TESTPROVIDES='test~1' atf_check -s exit:1 \
+		-e match:"provides must not contain" \
+		pbuild validate
+	TESTNAME=test TESTPROVIDES='test=1' atf_check -s exit:1 \
+		-e match:"provides must not contain" \
+		pbuild validate
+	TESTNAME=test TESTPROVIDES='test>1' atf_check -s exit:1 \
+		-e match:"provides must not contain" \
+		pbuild validate
+	TESTNAME=test TESTPROVIDES='test<=1' atf_check -s exit:1 \
+		-e match:"provides must not contain" \
+		pbuild validate
+}
+
+pbuild_validate_depends_body() {
+	init_keys
+	cp -ra "$testrepo"/test-pkgname .
+	cd test-pkgname
+	TESTDEPENDS="foo" TESTMAKEDEPENDS="bar" \
+		atf_check -s exit:0 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTDEPENDS="foo=1.0 bar>=1.0" TESTMAKEDEPENDS="baz<=1.0 x<2.0 z>1 !blah" \
+		atf_check -s exit:0 \
+		-e match:"Validating" \
+		pbuild validate
+	TESTDEPENDS="foo~1.0 bar>~1.0 baz<~1"
+		atf_check -s exit:0 \
+		-e match:"Validating" \
+		pbuild validate
+
+	for i in "foo=bar" "foo=~1.0" "foo>1.0_invalid"; do \
+		TESTDEPENDS="$i" atf_check -s exit:1 \
+			-e match:"Validating" \
+			pbuild validate
+	done
+}
+
+pbuild_subpackage_arch_body() {
+	init_keys
+	cp -ra "$testrepo" .
+	cd testrepo/subpackage-arch
+	arch="$(pbuild -A)"
+
+	for i in noarch all "$arch"; do
+		TESTSUBARCH="$i" pbuild all
+
+		[ -f "$REPODEST/testrepo/$arch/test-pkgname-$i-1.0-r0.ps4" ] || \
+			atf_fail "Failed to place $i arch subpackage correctly"
+		rm -rf "$REPODEST/testrepo"
+	done
+}
+
+pbuild_large_doc_subpackage_body() {
+	init_keys
+	cp -ra "$testrepo"/large-doc-subpkg .
+	cd large-doc-subpkg
+	atf_check -s exit:0 -o ignore \
+		-e match:"-doc subpackage is unusually large" \
+		pbuild all
+}
+
+pbuild_bigdocs_body() {
+	init_keys
+	cp -ra "$testrepo"/large-doc-subpkg .
+	cd large-doc-subpkg
+	options=bigdocs atf_check -s exit:0 -o ignore \
+		-e not-match:"-doc subpackage is unusually large" \
+		pbuild all
+}
+
+pbuild_pkgver_digit_letter_digit_body() {
+	cp -ra "$testrepo"/test-pkgname .
+	cd test-pkgname
+	TESTPKGVER=1.0p1 atf_check -s exit:1 \
+		-e match:'ERROR.*version' \
+		pbuild validate
+}
+
+pbuild_multiline_license_body() {
+	cp -ra "$testrepo"/test-licenses .
+	cd test-licenses
+	pbuild rootpkg
+	atf_check -o match:'^license = MIT AND \(GPL-3.0-only OR GPL-3.0-or-later AND BSD-4-Clause\)$' \
+		cat pkg/.control.test-licenses/.PKGINFO
+}
+
+pbuild_license_spdx_body() {
+	cp -ra "$testrepo"/test-licenses .
+	cd test-licenses
+	TESTPKGVER=1.0_p1 atf_check -s exit:0 \
+		-e not-match:'WARNING' \
+		pbuild validate
+}
+
+pbuild_git_ceiling_body() {
+	init_keys
+	git init
+	mkdir git-pkg
+	cd git-pkg
+	cat >PS4BUILD<<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="git-pkg"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+		build() {
+			git status
+		}
+		package() {
+			mkdir -p "\$pkgdir"
+		}
+	EOF
+	atf_check -s exit:1 \
+		-e match:"not a git repository" \
+		-e match:"ERROR: git-pkg: build failed" \
+		pbuild
+}
+
+pbuild_package_size_body() {
+	init_keys
+	mkdir -p test-size
+
+	cd test-size
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Test User 123 <123@example.com>
+		pkgname="test-size"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc='Dummy test package that has no files'
+		url='https://gitlab.alpinelinux.org/alpine/aports'
+		arch='noarch'
+		license='MIT'
+		install="\$pkgname-empty-script.post-install"
+		trigger="\$pkgname-empty-trigger.trigger=/"
+		subpackages="
+			\$pkgname-empty-noscript:_empty
+			\$pkgname-empty-script:_empty
+			\$pkgname-empty-trigger:_empty
+			\$pkgname-dirs:_dirs
+			\$pkgname-files:_files
+			\$pkgname-many:_many
+			\$pkgname-holes:_holes
+			\$pkgname-hardlink:_hardlink
+			\$pkgname-symlink:_symlink
+		"
+
+		# Test if multi line bc output is handle properly
+		export BC_LINE_LENGTH=1
+
+		package() {
+			mkdir -p "\$pkgdir"
+		}
+
+		_empty() {
+			mkdir -p "\$subpkgdir"
+		}
+
+		_dirs() {
+			mkdir -p "\$subpkgdir/a/ /v/e/r/y/ /d/e/e/p/ /d/i/r"
+			mkdir -p "\$subpkgdir"/b "\$subpkgdir"/c
+		}
+
+		_files() {
+			mkdir -p "\$subpkgdir"
+			cd "\$subpkgdir"
+			printf 'test\\n' > test
+			touch empty
+			mkdir -p dir
+			printf 'more\\n' > dir/more
+			printf 'size leak!\\n' > secret
+			chmod a-rwx secret
+			printf 'quoting and stuff\\n' > dir/"\\\$can't \\"touch \\\\this"
+		}
+
+		_many() {
+			mkdir -p "\$subpkgdir"
+			for i in \$(seq 10000); do
+				printf '\\n' > "\$subpkgdir/\$i"
+			done
+		}
+
+		_holes() {
+			mkdir -p "\$subpkgdir"
+			dd if=/dev/zero bs=1 seek=65534 count=1 of="\$subpkgdir"/holes
+		}
+
+		_hardlink() {
+			mkdir -p "\$subpkgdir"
+			cd "\$subpkgdir"
+			printf 'test\\n' > test
+			ln test link
+			ln test link2
+		}
+
+		_symlink() {
+			mkdir -p "\$subpkgdir"
+			ln -s / "\$subpkgdir"/link
+		}
+	EOF
+	cat > test-size-empty-script.post-install <<-EOF
+		#!/bin/sh
+		echo 1
+	EOF
+	cat > test-size-empty-trigger.trigger <<-EOF
+		#!/bin/sh
+		echo 1
+	EOF
+	pbuild rootpkg
+	local i size
+	for i in \
+		empty-noscript:0 \
+		empty-script:1 \
+		empty-trigger:1 \
+		dirs:1 \
+		files:39 \
+		many:10000 \
+		holes:65535 \
+		hardlink:5 \
+		symlink:1 \
+		; do \
+		size=$(awk -F ' = ' '$1 == "size" {print $2}' pkg/.control.test-size-${i%:*}/.PKGINFO)
+		[ "$size" -eq "${i#*:}" ] ||
+			atf_fail "$i failed: got $size"
+	done
+}
+
+pbuild_keepdirs_body() {
+	init_keys
+	mkdir -p test-amove
+
+	cd test-amove
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Test User 123 <123@example.com>
+		pkgname="test-keepdirs"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc='Dummy test package - keepdirs'
+		url='https://gitlab.alpinelinux.org/alpine/aports'
+		arch='noarch'
+		license='MIT'
+		options='keepdirs'
+
+		package() {
+			mkdir -p "\$pkgdir"/usr/bin
+		}
+	EOF
+	pbuild rootpkg || atf_fail "pbuild rootpkg failed"
+	test -d pkg/test-keepdirs/usr/bin || atf_fail "$i failed"
+}
+
+pbuild_amove_body() {
+	init_keys
+	mkdir -p test-amove
+
+	cd test-amove
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Test User 123 <123@example.com>
+		pkgname="test-amove"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc='Dummy test package - amove'
+		url='https://gitlab.alpinelinux.org/alpine/aports'
+		arch='noarch'
+		license='MIT'
+		subpackages="\$pkgname-file:_file
+			\$pkgname-etc:_etc
+			\$pkgname-bin:_bin
+			\$pkgname-sbin:_sbin
+			\$pkgname-root:_root
+			\$pkgname-var:_var
+			\$pkgname-usr:_usr
+			\$pkgname-space:_space"
+
+		package() {
+			mkdir -p "\$pkgdir"/etc \
+				"\$pkgdir"/usr/bin \
+				"\$pkgdir"/usr/sbin \
+				"\$pkgdir"/var/lib/\$pkgname \
+				"\$pkgdir"/usr/share
+			touch "\$pkgdir"/etc/file \
+				"\$pkgdir"/etc/\$pkgname.conf \
+				"\$pkgdir"/usr/bin/hello \
+				"\$pkgdir"/usr/sbin/shello \
+				"\$pkgdir"/root \
+				"\$pkgdir"/usr/sbin/space' ' \
+				"\$pkgdir"/var/lib/\$pkgname/testfile \
+				"\$pkgdir"/usr/share/a \
+				"\$pkgdir"/usr/share/b
+			ln -s dangling "\$pkgdir"/symlink
+		}
+		_file() {
+			amove etc/file
+		}
+		_etc() {
+			# leading and trailing /
+			amove ///etc/
+		}
+		_bin() {
+			# trailing /
+			amove usr/bin///
+		}
+		_sbin() {
+			# no leading and trailing /
+			amove usr/sbin/shello
+		}
+		_root() {
+			# no /
+			amove root
+
+			# symlink without existing target
+			amove symlink
+		}
+		_var() {
+			# leading /
+			amove /var/lib
+		}
+		_usr() {
+			# glob *
+			amove usr/share/*
+			! amove no-glob-match/*
+		}
+		_space() {
+			# with space
+			amove usr/sbin/space' '
+		}
+
+	EOF
+	pbuild rootpkg || atf_fail "pbuild rootpkg failed"
+	for i in \
+			test-amove-file/etc/file \
+			test-amove-etc/etc/test-amove.conf \
+			test-amove-bin/usr/bin/hello \
+			test-amove-sbin/usr/sbin/shello \
+			test-amove-root/root \
+			test-amove-root/symlink \
+			test-amove-var/var/lib/test-amove/testfile \
+			test-amove-usr/usr/share/a \
+			test-amove-usr/usr/share/b \
+			test-amove-space/usr/sbin/space' ' \
+			; do \
+		[ -L pkg/"$i" ] || [ -e pkg/"$i" ] || atf_fail "$i failed"
+	done
+}
+
+pbuild_doc_body() {
+	init_keys
+	mkdir -p foo
+
+	cd foo
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Test User 123 <123@example.com>
+		pkgname="foo"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc='Dummy test package - doc'
+		url='https://gitlab.alpinelinux.org/alpine/aports'
+		arch='noarch'
+		license='MIT'
+		subpackages="\$pkgname-doc"
+
+		build() {
+			touch foo foo.1 readme
+		}
+
+		package() {
+			install -Dt "\$pkgdir"/usr/bin foo
+			install -Dt "\$pkgdir"/usr/share/man/man1 foo.1
+			install -Dt "\$pkgdir"/usr/share/doc/foo readme
+		}
+	EOF
+	pbuild build rootpkg || atf_fail "pbuild rootpkg failed"
+	find pkg
+	for i in \
+			foo/usr/bin/foo \
+			foo-doc/usr/share/man/man1/foo.1.gz \
+			foo-doc/usr/share/doc/foo/readme \
+			; do \
+		test -f pkg/$i || atf_fail "$i failed"
+	done
+}
+
+pbuild_dev_body() {
+	init_keys
+	mkdir -p foo
+
+	cd foo
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Test User 123 <123@example.com>
+		pkgname="foo"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc='Dummy test package - dev'
+		url='https://gitlab.alpinelinux.org/alpine/aports'
+		arch='noarch'
+		license='MIT'
+		subpackages="\$pkgname-dev"
+
+		build() {
+			touch foo foo.h libfoo.so.1
+		}
+
+		package() {
+			install -Dt "\$pkgdir"/usr/bin foo
+			install -Dt "\$pkgdir"/usr/include foo.h
+			install -Dt "\$pkgdir"/usr/lib libfoo.so.1
+			ln -s libfoo.so.1 "\$pkgdir"/usr/lib/libfoo.so
+		}
+	EOF
+	pbuild build rootpkg || atf_fail "pbuild rootpkg failed"
+	find pkg
+	for i in \
+			foo/usr/bin/foo \
+			foo-dev/usr/include/foo.h \
+			; do \
+		test -f pkg/$i || atf_fail "$i failed"
+	done
+	test -L pkg/foo-dev/usr/lib/libfoo.so || atf_fail "libfoo.so failed"
+}
+
+pbuild_devhelp_warn_body() {
+	init_keys
+	mkdir -p foo
+
+	cd foo
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Test User 123 <123@example.com>
+		pkgname="foo"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc='Dummy test package that has devhelp'
+		url='https://gitlab.alpinelinux.org/alpine/aports'
+		arch='noarch'
+		license='MIT'
+
+		package() {
+			mkdir -p "\$pkgdir"/usr/share/devhelp/book
+		}
+	EOF
+	atf_check -e match:"WARNING:" \
+		pbuild rootpkg
+}
+
+pbuild_devhelp_body() {
+	init_keys
+	mkdir -p foo
+
+	cd foo
+	cat > PS4BUILD <<-EOF
+		# Maintainer: Test User 123 <123@example.com>
+		pkgname="foo"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc='Dummy test package that has devhelp'
+		url='https://gitlab.alpinelinux.org/alpine/aports'
+		arch='noarch'
+		license='MIT'
+		subpackages="\$pkgname-devhelp"
+
+		package() {
+			mkdir -p "\$pkgdir"/usr/share/devhelp/book
+		}
+	EOF
+	atf_check -e not-match:"WARNING:" \
+		-o match:'->' \
+		pbuild rootpkg
+}
+
+pbuild_check_maintainer_body() {
+	mkdir -p foo && cd foo
+	for m in "Test User 123 <123example.com>" \
+			"foo" \
+			"user@example.com" \
+			" Leading Space <n@example.com>" \
+			"Trailing Space <n@example.com> " \
+			"Foo<u@example.com>" \
+			'"Quotes <u@example.com>"'; do
+		printf "# Maintainer: %s\n%s\n" "$m" "pkgname=foo" > PS4BUILD
+		atf_check -s not-exit:0 \
+			-e match:"ERROR:" \
+			pbuild check_maintainer
+	done
+
+	for m in "Test User <123@example.com>" "Foo O'Brian <n@example.com>" "Łukasz Something <s@example.com>"; do
+		printf "# Maintainer: %s\n%s\n" "$m" "pkgname=foo" > PS4BUILD
+		atf_check pbuild check_maintainer
+	done
+}
+
+pbuild_cleanoldpkg_body() {
+	init_keys
+	mkdir -p main/foo
+	cd main/foo
+	for arch in aarch64 x86_64; do
+		for v in 0.9 1.0 1.1; do
+			cat > PS4BUILD <<-EOF
+				# Maintainer: Test User 123 <123@example.com>
+				pkgname="foo"
+				pkgver="$v"
+				pkgrel=0
+				pkgdesc='Dummy test package - dev'
+				url='https://gitlab.alpinelinux.org/alpine/aports'
+				arch='noarch'
+				license='MIT'
+				options='!check'
+				package() {
+					mkdir -p "\$pkgdir"
+				}
+			EOF
+			CARCH=$arch atf_check -e not-empty pbuild clean unpack rootpkg
+		done
+	done
+
+	CARCH=aarch64 atf_check -e match:"Cleaning" pbuild cleanoldpkg
+
+	find "$REPODEST"
+
+	# should keep the current ps4BUILD version
+	for arch in aarch64 x86_64; do
+		f="$REPODEST"/main/$arch/foo-1.1-r0.ps4
+		if ! test -e "$f"; then
+			atf_fail "$f was deleted"
+		fi
+	done
+
+	# should remove old packages of aarch64
+	for i in 0.9 1.0; do
+		f="$REPODEST"/main/aarch64/foo-$i-r0.ps4
+		if test -e "$f"; then
+			atf_fail "$f was not deleted"
+		fi
+	done
+
+	# should not delete other arches than aarch64
+	for i in 0.9 1.0; do
+		f="$REPODEST"/main/x86_64/foo-$i-r0.ps4
+		if ! test -e "$f"; then
+			atf_fail "$f was deleted"
+		fi
+	done
+}
+
+pbuild_path_with_spaces_body() {
+	init_keys
+	cp -ra "$testrepo" .
+	cd testrepo/pkg\ path\ with\ spaces
+	atf_check -s exit:0 \
+		-o match:"hello world" \
+		-e match:"Build complete" \
+		pbuild
+}
+
+pbuild_pyc_warn_body() {
+	init_keys
+
+	mkdir -p pycachetest
+	cd pycachetest
+	cat >PS4BUILD <<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="pycachetest"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		source=""
+
+		package() {
+			mkdir -p "\$pkgdir"/usr/lib/python3.11/site-packages/test/__pycache__/
+			touch "\$pkgdir"/usr/lib/python3.11/site-packages/test/__pycache__/main.cpython-311.pyc
+		}
+	EOF
+
+	atf_check -e match:"WARNING.*pyc*" pbuild rootpkg
+}
+
+pbuild_pyc_body() {
+	init_keys
+
+	mkdir -p foo
+	cd foo
+	cat >PS4BUILD <<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="foo"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		source=""
+		subpackages="\$pkgname-pyc"
+
+		package() {
+			mkdir -p "\$pkgdir"/usr/lib/python3.11/site-packages/test/__pycache__/
+			touch "\$pkgdir"/usr/lib/python3.11/site-packages/test/__pycache__/main.cpython-311.pyc
+		}
+	EOF
+
+	atf_check -o match:"->" -e not-match:"WARNING.*pyc*" pbuild rootpkg
+	atf_check -o match:"__pycache__" find pkg/foo-pyc -name '__pycache__'
+	# verify install_if is correct
+	atf_check -o match:"foo=1.0-r0" -o match:"pyc" \
+		grep install_if pkg/.control.foo-pyc/.PKGINFO
+}
+
+pbuild_setcap_binary_body() {
+	init_keys
+	cp -ra "$testrepo"/setcap .
+	cd setcap
+	atf_check -s exit:1 \
+		-e match:"Found binary with extra capabilities" \
+		-e match:"Found setcap binary executable by others" \
+		pbuild all
+}
+
+pbuild_setcap_binary_with_option_body() {
+	init_keys
+	cp -ra "$testrepo"/setcap .
+	cd setcap
+	options=setcap atf_check -s exit:0 \
+		-e not-match:"Found binary with extra capabilities" \
+		-e match:"Found setcap binary executable by others" \
+		pbuild all
+}
+
+pbuild_command_provides_body() {
+	init_keys
+	mkdir testprovides
+	cd testprovides
+	cat >PS4BUILD<<-EOF
+		# Maintainer: Natanael Copa <ncopa@alpinelinux.org>
+		pkgname=testprovides
+		pkgver=1.0
+		pkgrel=0
+		pkgdesc="Dummy test package that installs a file and directory in path"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		prepare() { mkdir -p "\$builddir"; }
+		build() { true; }
+		check() { true; }
+		package() {
+			mkdir -p "\$pkgdir/usr/bin"
+			printf "%s\n" '#!/bin/sh' >"\$pkgdir/usr/bin/foo"
+			chmod +x "\$pkgdir/usr/bin/foo"
+			cp -a "\$pkgdir/usr/bin/foo" "\$pkgdir/usr/bin/foo@"
+			mkdir -p "\$pkgdir/usr/bin/dir/"
+			ln -s /usr/bin/not-on-the-host-system-but-in-a-dependency "\$pkgdir/usr/bin/link"
+		}
+	EOF
+	pbuild rootpkg
+
+	atf_check \
+		-o match:"provides = cmd:foo=1.0-r0" \
+		-o not-match:"provides = cmd:foo@=1.0-r0" \
+		-o match:"provides = cmd:link=1.0-r0" \
+		-o not-match:"provides = cmd:dir=1.0-r0" \
+		grep '^provides = ' pkg/.control.testprovides/.PKGINFO
+}
+
+pbuild_gocache_dir_body() {
+	init_keys
+	mkdir gocache-dir
+	cd gocache-dir
+	cat >PS4BUILD<<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="gocache-dir"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+		build() {
+			echo "dir:\$GOCACHE"
+		}
+		package() {
+			:
+		}
+	EOF
+
+	unset GOCACHE
+	MOVE_CACHES=1 \
+	atf_check -s exit:0 \
+		-o match:"dir:.*/tmp/go" \
+		pbuild prepare build
+}
+
+pbuild_cargo_home_dir_body() {
+	init_keys
+	mkdir cargo-home-dir
+	cd cargo-home-dir
+	cat >PS4BUILD<<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="cargo-home-dir"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+		build() {
+			echo "dir:\$CARGO_HOME"
+		}
+		package() {
+			:
+		}
+	EOF
+
+	unset CARGO_HOME
+	MOVE_CACHES=1 \
+	atf_check -s exit:0 \
+		-o match:"dir:.*/tmp/cargo" \
+		pbuild prepare build
+}
+
+pbuild_fish_comp_split_body() {
+	init_keys
+	mkdir fish-split-dir
+	cd fish-split-dir
+	cat >PS4BUILD<<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="fish-split-dir"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		prepare() {
+			mkdir -p "\$builddir"
+		}
+		package() {
+			mkdir -p "\$pkgdir"/usr/share/fish/completions/
+			mkdir -p "\$pkgdir"/usr/share/fish/vendor_completions.d/
+			echo "comp" > "\$pkgdir"/usr/share/fish/completions/comp.fish
+			echo "comp" > "\$pkgdir"/usr/share/fish/vendor_completions.d/comp.fish
+		}
+	EOF
+	# test that there is a warning for the legacy dir existing
+	atf_check -s exit:0 \
+		-e match:"fish completions for programs should be located in /usr/share/fish/vendor_completions.d" \
+		pbuild prepare build rootpkg
+
+	# now add the correct subpackage
+	echo 'subpackages="$pkgname-fish-completion"' >> ps4BUILD
+	pbuild clean prepare build rootpkg
+
+	if ! [ -d pkg/fish-split-dir-fish-completion/usr/share/fish/completions ]; then
+		echo "missing old dir"
+		exit 1
+	fi
+	if ! [ -d pkg/fish-split-dir-fish-completion/usr/share/fish/vendor_completions.d ]; then
+		echo "missing new dir"
+		exit 1
+	fi
+}
+
+create_mock_ps4() {
+	mkdir -p usr/bin
+	cat > usr/bin/ps4 <<-EOF
+		#!/bin/sh
+		if [ "\$1" = "--print-arch" ]; then
+			echo 'aarch64'
+			exit 0
+		fi
+		printf 'ps4 %s\n' "\$*" >&2
+	EOF
+	chmod +x usr/bin/ps4
+	ln -s ps4 usr/bin/pbuild-ps4
+	PATH="$PWD/usr/bin:$PATH"
+}
+
+pbuild_deps_body() {
+	create_mock_ps4
+	mkdir testdeps
+	cd testdeps
+	cat >PS4BUILD <<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="testdeps"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		depends="foo"
+		makedepends="bar"
+		checkdepends="checkdep"
+		makedepends_host="hostdep"
+		makedepends_build="builddep"
+	EOF
+
+	# native build. pull in both depends and makedepends
+	# do not install in any --root
+	atf_check \
+		-e match:'Installing for build: foo bar checkdep$' \
+		-e match:'ps4 add .*--virtual .makedepends-testdeps foo bar checkdep' \
+		-e not-match:'ps4 add .*--root' \
+		pbuild deps
+
+	# dont install checkdep with pbuild_BOOTSTRAP
+	PBUILD_BOOTSTRAP=1 atf_check \
+		-e not-match:"ps4 add.*checkdep" \
+		pbuild deps
+
+	# crosscompile:
+	#   install makedepends_build without --root
+	#   install makedepends_host with --root
+	CTARGET='s390x' CHOST='ppc64le' CBUILDROOT="$PWD/root" atf_check \
+		-e match:'Installing for build: builddep' \
+		-e match:'Installing for host: hostdep' \
+		-e match:'ps4 add .*--virtual .makedepends-testdeps builddep' \
+		-e not-match:'ps4 add.*--root.*builddep' \
+		-e match:'ps4 add .*--root.*hostdep' \
+		-e match:'ps4 add .*--arch s390x.*hostdep' \
+		-e not-match:'ps4 add.*checkdep' \
+		pbuild deps
+
+	# crosscompile, set only CHOST
+	CHOST='armhf' atf_check \
+		-e match:'ps4 add.*builddep' \
+		-e not-match:'ps4 add.*--root.*builddep' \
+		-e match:'ps4 add.*--root.*--arch armhf.*hostdep' \
+		-e not-match:'ps4 add.*--arch armhf.*builddep' \
+		pbuild deps
+
+	# Check shell_escape
+	atf_check \
+		-e match:"ps4 add .*--repository It's \\\\b'\"\"'  \"escaped\"/.*" \
+		pbuild -P "It's \b'\"\"'  \"escaped\"" deps
+}
+
+pbuild_usr_merge_body() {
+	init_keys
+	mkdir usrmergetest
+	cd usrmergetest
+	cat >PS4BUILD <<-EOF
+		# Maintainer: Joe User <juser@example.com>
+		pkgname="usrmergetest"
+		pkgver="1.0"
+		pkgrel=0
+		pkgdesc="Dummy test package"
+		url="https://gitlab.alpinelinux.org/alpine/aports"
+		arch="noarch"
+		license="MIT"
+		options="!check"
+
+		package() {
+			mkdir -p \
+				"\$pkgdir"/lib \
+				"\$pkgdir"/bin \
+				"\$pkgdir"/sbin
+		}
+	EOF
+	atf_check -s exit:0 \
+		-e match:"WARNING:.*: Packages must not put anything under /lib, use /usr/lib instead" \
+		-e match:"WARNING:.*: Packages must not put anything under /bin, use /usr/bin instead" \
+		-e match:"WARNING:.*: Packages must not put anything under /sbin, use /usr/bin instead" \
+		pbuild
+}

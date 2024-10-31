@@ -1,0 +1,140 @@
+#!/bin/sh
+
+# abuild-sign - sign indexes
+# Copyright (c) 2009 Natanael Copa <ncopa@alpinelinux.org>
+#
+# Distributed under GPL-2.0-only
+#
+
+program_version=@VERSION@
+sharedir=${PBUILD_SHAREDIR:-@sharedir@}
+
+if ! [ -f "$sharedir/functions.sh" ]; then
+	echo "$sharedir/functions.sh: not found" >&2
+	exit 1
+fi
+. "$sharedir/functions.sh"
+
+gzip=$(command -v pigz || echo gzip)
+
+do_sign() {
+	local f i keyname repo openssl
+	openssl=$(command -v openssl || echo libressl)
+
+	# we are actually only interested in the name, not the file itself
+	keyname=${pubkey##*/}
+
+	for f; do
+		i=$(readlink -f $f)
+		[ -d "$i" ] && i="$i/PS4INDEX.tar.gz"
+		repo="${i%/*}"
+		trap 'die "failed to sign $i"' EXIT
+		set -e
+		cd "$repo"
+		sig=".SIGN.$sigtype.$keyname"
+		$openssl dgst $dgstargs -sign "$privkey" -out "$sig" "$i"
+
+		if [ -n "$SOURCE_DATE_EPOCH" ]; then
+			touch -h -d "@$SOURCE_DATE_EPOCH" "$sig"
+		fi
+
+		tmptargz=$(mktemp)
+		tar --owner=0 --group=0 --numeric-owner -f - -c "$sig" | pbuild-tar --cut | $gzip -n -9 > "$tmptargz"
+		tmpsigned=$(mktemp)
+		cat "$tmptargz" "$i" > "$tmpsigned"
+		rm -f "$tmptargz" "$sig"
+		chmod 644 "$tmpsigned"
+		mv "$tmpsigned" "$i"
+		msg "Signed $i"
+		set +e
+		trap - EXIT
+	done
+}
+
+usage() {
+	cat <<-__EOF__
+		$program $program_version - sign indexes
+		Usage: $program [-k PRIVKEY] [-p PUBKEY] INDEXFILE...
+		       $program -e
+		Options:
+		  -e, --installed    Check only of there exist a private key for signing
+		  -k, --private KEY  The private key to use for signing
+		  -p, --public KEY   The name of public key. ps4 add will look for
+		                     /etc/ps4/keys/KEY
+		  -t, --type TYPE    The signature type RSA or RSA256
+		  -q, --quiet
+		  -h, --help         Show this help
+
+	__EOF__
+}
+
+check_installed=false
+privkey="$PACKAGER_PRIVKEY"
+pubkey=
+quiet=
+
+args=$(getopt -o ek:p:t:qh --long installed,private:,public:,type:,quiet,help -n "$program" -- "$@")
+if [ $? -ne 0 ]; then
+	usage >&2
+	exit 2
+fi
+eval set -- "$args"
+while true; do
+	case $1 in
+		-e|--installed) check_installed=true;;
+		-k|--private) privkey=$2; shift;;
+		-p|--public) pubkey=$2; shift;;
+		-t|--type) sigtype=$2; shift;;
+		-q|--quiet) quiet=1;; # suppresses msg
+		-h|--help) usage; exit;;
+		--) shift; break;;
+		*) exit 1;; # getopt error
+	esac
+	shift
+done
+if [ $# -eq 0 ] && ! $check_installed; then
+	usage >&2
+	exit 2
+fi
+
+if [ -z "$privkey" ]; then
+	cat >&2 <<-__EOF__
+		No private key found. Use 'pbuild-keygen' to generate the keys.
+		Then you can either:
+		  * set the PACKAGER_PRIVKEY in $PBUILD_USERCONF
+		    ('abuild-keygen -a' does this for you)
+		  * set the PACKAGER_PRIVKEY in $PBUILD_CONF
+		  * specify the key with the -k option to $program
+
+	__EOF__
+	exit 1
+fi
+
+if [ -z "$pubkey" ]; then
+	pubkey=${PACKAGER_PUBKEY:-"${privkey}.pub"}
+fi
+
+if [ -z "$sigtype" ]; then
+	sigtype=RSA
+fi
+
+case $sigtype in
+	RSA) dgstargs="-sha1";;
+	RSA256) dgstargs="-sha256";;
+	*)
+		echo "$program: supported types are RSA and RSA256" >&2
+		exit 1
+		;;
+esac
+if $check_installed; then
+	if ! [ -e "$privkey" ]; then
+		echo "$program: $privkey: File not found" >&2
+		exit 1
+	fi
+	if ! [ -e "$pubkey" ]; then
+		echo "$program: $pubkey: File not found" >&2
+		exit 1
+	fi
+else
+	do_sign "$@"
+fi

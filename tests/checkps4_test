@@ -1,0 +1,40 @@
+#!/usr/bin/env atf-sh
+
+. $(atf_get_srcdir)/test_env.sh
+init_tests \
+	checkps4_help \
+	checkps4_invalid_opt \
+	checkps4_missing_abuild_conf \
+	checkps4_missing_ps4build
+
+DATADIR=$(atf_get_srcdir)/testdata
+
+export PBUILD_SHAREDIR=$(atf_get_srcdir)/..
+export PBUILD_CONF=/dev/null
+export PBUILD_USERCONF=/dev/null
+
+checkps4_help_body() {
+	atf_check -s exit:0 \
+		-o match:"Usage:" \
+		checkps4 --help
+}
+
+checkps4_invalid_opt_body() {
+	atf_check -s not-exit:0 \
+		-e match:"Usage:" \
+		checkps4 --invalid
+}
+
+checkps4_missing_pbuild_conf_body() {
+	PBUILD_DEFCONF=/dev/null atf_check \
+		-s not-exit:0 \
+		-e match:"no pbuild.conf found" \
+		checkps4
+}
+
+checkps4_missing_ps4build_body() {
+	atf_check \
+		-s not-exit:0 \
+		-e match:"must be run in the directory of a built package" \
+		checkps4
+}

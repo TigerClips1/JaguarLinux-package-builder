@@ -1,0 +1,117 @@
+#!/usr/bin/env atf-sh
+
+. $(atf_get_srcdir)/test_env.sh
+init_tests \
+	pbuild_sign_help \
+	pbuild_sign_invalid_opt \
+	pbuild_sign_missing_arg \
+	pbuild_sign_installed_missing \
+	pbuild_sign_installed_missing_pub \
+	pbuild_sign_installed_missing_priv \
+	pbuild_sign_installed \
+	pbuild_sign_owner_type_invalid \
+	pbuild_sign_owner_type_default \
+	pbuild_sign_owner_type_rsa \
+	pbuild_sign_owner_type_rsa256
+
+export pbuild_SHAREDIR="$(atf_get_srcdir)/.."
+export pbuild_USERDIR="$HOME"/.pbuild
+
+init_keys() {
+	cp -ra "$(atf_get_srcdir)"/testdata/.pbuild "$PWD"
+}
+
+pbuild_sign_help_body() {
+	atf_check -s exit:0 \
+		-o match:"Usage:" \
+		pbuild-sign --help
+}
+
+pbuild_sign_invalid_opt_body() {
+	atf_check -s exit:2 \
+		-e match:"Usage:" \
+		pbuild-sign -INVALID
+}
+
+pbuild_sign_missing_arg_body() {
+	atf_check -s exit:2 \
+		-e match:"Usage:" \
+		pbuild-sign
+}
+
+pbuild_sign_installed_missing_body() {
+	atf_check -s exit:1 \
+		-e match:"No private key found" \
+		pbuild-sign --installed
+}
+
+pbuild_sign_installed_missing_pub_body() {
+	init_keys
+	rm .pbuild/*.rsa.pub
+	atf_check -s exit:1 \
+		-e match:"rsa.pub: File not found" \
+		pbuild-sign --installed
+}
+
+pbuild_sign_installed_missing_priv_body() {
+	init_keys
+	rm .pbuild/*.rsa
+	atf_check -s exit:1 \
+		-e match:"rsa: File not found" \
+		pbuild-sign --installed
+}
+
+pbuild_sign_installed_body() {
+	init_keys
+	atf_check -s exit:0 \
+		pbuild-sign --installed
+}
+
+pbuild_sign_owner_type_invalid_body() {
+	init_keys
+	atf_check -s exit:1 \
+		-e match:"pbuild-sign: supported types are RSA and RSA256" \
+		pbuild-sign -t DSA foo.tar.gz
+}
+
+pbuild_sign_owner_type_default_body() {
+	init_keys
+	echo foo > .PS4INFO
+	tar -zcf foo.tar.gz .PS4INFO || atf_fail "Failed to create unsigned test archive"
+
+	atf_check -s exit:0 \
+		-e match:"Signed" \
+		pbuild-sign foo.tar.gz
+
+	atf_check -s exit:0 \
+		-o match:"0/0.*\.SIGN\.RSA\." \
+		tar -ztvf foo.tar.gz
+}
+
+pbuild_sign_owner_type_rsa_body() {
+	init_keys
+	echo foo > .PS4INFO
+	tar -zcf foo.tar.gz .PS4INFO || atf_fail "Failed to create unsigned test archive"
+
+	atf_check -s exit:0 \
+		-e match:"Signed" \
+		pbuild-sign -t RSA foo.tar.gz
+
+	atf_check -s exit:0 \
+		-o match:"0/0.*\.SIGN\.RSA\." \
+		tar -ztvf foo.tar.gz
+}
+
+pbuild_sign_owner_type_rsa256_body() {
+	init_keys
+	echo foo > .PS4INFO
+	tar -zcf foo.tar.gz .PS4INFO || atf_fail "Failed to create unsigned test archive"
+
+	atf_check -s exit:0 \
+		-e match:"Signed" \
+		pbuild-sign -t RSA256 foo.tar.gz
+
+	atf_check -s exit:0 \
+		-o match:"0/0.*\.SIGN\.RSA256\." \
+		tar -ztvf foo.tar.gz
+}

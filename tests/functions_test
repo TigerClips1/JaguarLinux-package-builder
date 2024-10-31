@@ -23,10 +23,10 @@ funcs_check_missing_gcc_body() {
 		sh -e -c "CC=false; . $FUNCS && test -z \"$CBUILD\""
 }
 
-funcs_check_missing_apk_body() {
+funcs_check_missing_ps4_body() {
 	atf_check -s exit:1 \
 		-e match:"Unable to deduce build architecture" \
-		sh -e -c "APK=false; . $FUNCS && test -z \"$CBUILD\""
+		sh -e -c "PS4=false; . $FUNCS && test -z \"$CBUILD\""
 }
 
 funcs_check_missing_git_body() {
@@ -62,25 +62,25 @@ funcs_check_defconfig_body() {
 
 	unset CFLAGS
 
-	# test /usr/share/abuild/default.conf
-	ABUILD_DEFCONF="$PWD"/def.conf ABUILD_CONF=/dev/null ABUILD_USERCONF=/dev/null \
+	# test /usr/share/pbuild/default.conf
+	PBUILD_DEFCONF="$PWD"/def.conf PBUILD_CONF=/dev/null PBUILD_USERCONF=/dev/null \
 		atf_check -o match:"defcflags" \
 		sh -e -c " . $FUNCS; echo \"\$CFLAGS\""
 
-	# test /etc/abuild.conf
-	ABUILD_DEFCONF=/dev/null ABUILD_CONF="$PWD"/etc.conf ABUILD_USERCONF=/dev/null \
+	# test /etc/pbuild.conf
+	PBUILD_DEFCONF=/dev/null PBUILD_CONF="$PWD"/etc.conf PBUILD_USERCONF=/dev/null \
 		atf_check \
 		-o match:"syscflags" \
 		sh -e -c " . $FUNCS; echo \"\$CFLAGS\""
 
-	# user config ($HOME/.abuild/abuild.conf) wins over /etc/abuild.conf
-	ABUILD_DEFCONF="$PWD"/def.conf ABUILD_CONF="$PWD/etc.conf" ABUILD_USERCONF="$PWD/user.conf" \
+	# user config ($HOME/.abuild/pbuild.conf) wins over /etc/abuild.conf
+	PBUILD_DEFCONF="$PWD"/def.conf PBUILD_CONF="$PWD/etc.conf" PBUILD_USERCONF="$PWD/user.conf" \
 	atf_check \
 		-o match:"usercflags" \
 		sh -e -c " . $FUNCS; echo \"\$CFLAGS\""
 
 	# environment wins
-	ABUILD_DEFCONF="$PWD"/def.conf ABUILD_CONF="$PWD/etc.conf" ABUILD_USERCONF="$PWD/user.conf" \
+	PBUILD_DEFCONF="$PWD"/def.conf PBUILD_CONF="$PWD/etc.conf" PBUILD_USERCONF="$PWD/user.conf" \
 		CFLAGS="envcflags" atf_check \
 		-o match:"envcflags" \
 		sh -e -c " . $FUNCS; echo \"\$CFLAGS\""

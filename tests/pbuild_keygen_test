@@ -1,0 +1,118 @@
+#!/usr/bin/env atf-sh
+
+SRCDIR="$(atf_get_srcdir)"
+. "$SRCDIR"/test_env.sh
+init_tests \
+	pbuild_keygen_help \
+	pbuild_keygen_invalid_opts \
+	pbuild_keygen_invalid_arg \
+	pbuild_keygen_non_interactive \
+	pbuild_keygen_append \
+	pbuild_keygen_install_without_sudo \
+	pbuild_keygen_install_interactive \
+	pbuild_keygen_install_non_interactive \
+	pbuild_keygen_install_doas \
+	pbuild_keygen_kernel \
+
+export PBUILD_SHAREDIR="$SRCDIR"/..
+export PBUILD_USERDIR="$HOME"/.pbuild
+export GIT=false
+export FAKEKEY="$SRCDIR/testdata/pbuild.key"
+export FAKEKEYPUB="$SRCDIR/testdata/pbuild.key.pub"
+
+PATH="$SRCDIR/bin:$PATH"
+
+pbuild_keygen_help_body() {
+	atf_check -s exit:0 \
+		-o not-empty \
+		-e empty \
+		pbuild-keygen --help
+}
+
+pbuild_keygen_invalid_opts_body() {
+	atf_check -s exit:1 \
+		-o empty \
+		-e not-empty \
+		pbuild-keygen -INVALID
+}
+
+pbuild_keygen_invalid_arg_body() {
+	atf_check -s exit:2 \
+		-o empty \
+		-e not-empty \
+		pbuild-keygen INVALID
+}
+
+pbuild_keygen_non_interactive_body() {
+	atf_check -s exit:0 \
+		-o empty \
+		-e match:"(Generating|writing) RSA" \
+		pbuild-keygen -n
+}
+
+pbuild_keygen_append_body() {
+	PACKAGER="Test User <user@example.com>" \
+		atf_check -s exit:0 \
+		\
+		-o empty \
+		-e match:"(Generating|writing) RSA" \
+		pbuild-keygen --append -n
+		grep '^PACKAGER_PRIVKEY=.*user@example.com' "$HOME"/.pbuild/pbuild.conf \
+			|| atf_fail 'PACKAGER_PRIVKEY not set in pbuild.conf'
+}
+
+pbuild_keygen_install_without_sudo_body() {
+	SUDO=false \
+		atf_check -s exit:1 \
+		\
+		-o empty \
+		-e match:"(Generating|writing) RSA" \
+		pbuild-keygen --install -n
+}
+
+pbuild_keygen_install_interactive_body() {
+	echo | pbuild_keygen_install_root="$PWD" SUDO= \
+		atf_check -s exit:0 \
+		\
+		-o match:"Enter file" \
+		-e match:"(Generating|writing) RSA" \
+		pbuild-keygen --install
+}
+
+pbuild_keygen_install_non_interactive_body() {
+	pbuild_keygen_install_root="$PWD" SUDO= \
+		atf_check -s exit:0 \
+		\
+		-o empty \
+		-e match:"(Generating|writing) RSA" \
+		pbuild-keygen --install -n
+}
+
+pbuild_keygen_install_doas_body() {
+	mkdir bin
+	cat >bin/doas<<-EOF
+		#!/bin/sh
+		echo "fake doas"
+		"\$@"
+	EOF
+	chmod +x bin/doas
+
+	PATH="$PWD/bin:$PATH" pbuild_keygen_install_root="$PWD" \
+		atf_check -s exit:0 \
+		\
+		-o match:"fake doas" \
+		-e match:"(Generating|writing) RSA" \
+		pbuild-keygen --install -n
+}
+
+pbuild_keygen_kernel_body() {
+	atf_check -s exit:0 \
+		-e match:"(Generating|writing) RSA" \
+		-e match:"signing key was created:.*kernel_signing_key.pem" \
+		-e match:"KERNEL_SIGNING_KEY=.*was added to.*pbuild.conf" \
+		pbuild-keygen --kernel
+	grep '^KERNEL_SIGNING_KEY=.*' "$HOME"/.pbuild/pbuild.conf \
+			|| atf_fail 'KERNEL_SIGNING_KEY not set in pbuild.conf'
+	test -f "$HOME"/.pbuild/kernel_signing_key.pem \
+			|| atf_fail '$HOME/.pbuild/kernel_signing_key.pem was not created'
+}
