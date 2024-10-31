@@ -1783,7 +1783,7 @@ human_size() {
 		printf("%.1f %s\n", y, type[i+2]) }'
 }
 
-apk_tar() {
+ps4_tar() {
 	tar --format=posix \
 		--pax-option=exthdr.name=%d/PaxHeaders/%f,atime:=0,ctime:=0 \
 		--mtime="@$SOURCE_DATE_EPOCH" \
